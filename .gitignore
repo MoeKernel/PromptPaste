@@ -1,0 +1,88 @@
+# Python标准忽略项
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env
+.venv
+
+# 构建及分发相关
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller相关
+*.manifest
+*.spec
+
+# 单元测试及覆盖率报告
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# 翻译文件
+*.mo
+*.pot
+
+# 日志文件
+*.log
+local_settings.py
+
+# IDE相关文件
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+.spyderproject
+.spyproject
+.ropeproject
+
+# 操作系统生成的文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 项目特有忽略项
+# 注意：如果promptpaste.db是用户数据而非示例数据，取消下面的注释
+# *.db
+# *.db-journal
+
+# 备份文件
+*.bak
+backups/
+
+# PyInstaller临时文件
+warn-*.txt
+xref-*.html
