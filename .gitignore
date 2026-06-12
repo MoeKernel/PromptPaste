@@ -86,3 +86,21 @@ backups/
 # PyInstaller临时文件
 warn-*.txt
 xref-*.html
+
+# C# / .NET 生成文件
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.nupkg
+**/[Pp]ublish/
+*.DotSettings.user
+packages/
+*.iobj
+*.ipdb
+*.VC.db
+# Codegraph 本地索引
+.codegraph/

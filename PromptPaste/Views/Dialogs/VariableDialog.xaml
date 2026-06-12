@@ -1,0 +1,29 @@
+<Window x:Class="PromptPaste.Views.Dialogs.VariableDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="输入变量值" Width="400" Height="Auto"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI, Microsoft YaHei"
+        ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="请为以下变量输入替换值" FontSize="15" FontWeight="SemiBold" />
+            <TextBlock Text="模板中的变量将被替换为对应的输入值" FontSize="11" Foreground="#888" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" x:Name="FieldsPanel" Margin="0,0,0,16" />
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="取消" Padding="20,8" Margin="0,0,10,0"
+                    IsCancel="True" Click="Cancel_Click" />
+            <Button Content="确定" Padding="24,8" Click="Submit_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
