@@ -578,7 +578,7 @@ public class DatabaseService : IDisposable
             if (string.IsNullOrWhiteSpace(item.Title) || string.IsNullOrWhiteSpace(item.Content))
                 continue;
 
-            var categoryPaths = item.CategoryPaths
+            var categoryPaths = (item.CategoryPaths ?? new List<string>())
                 .Where(p => !string.IsNullOrWhiteSpace(p))
                 .Select(p => p.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -592,7 +592,7 @@ public class DatabaseService : IDisposable
                 Content = item.Content.Trim(),
                 CategoryIds = categoryIds,
                 CategoryPaths = categoryPaths,
-                Tags = item.Tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                Tags = (item.Tags ?? new List<string>()).Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                 UsageCount = Math.Max(0, item.UsageCount),
                 LastUsed = item.LastUsed,
                 CreatedAt = item.CreatedAt == default ? DateTime.Now : item.CreatedAt
