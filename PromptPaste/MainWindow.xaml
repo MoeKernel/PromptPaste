@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:PromptPaste"
         xmlns:models="clr-namespace:PromptPaste.Models"
-        Title="PromptPaste - 剪贴板管理"
+        Title="PromptPaste - 提示词与片段管理"
         Width="1040" Height="680" MinWidth="860" MinHeight="540"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
@@ -13,6 +13,7 @@
         <local:DateTimeConverter x:Key="DateConv" />
         <local:ContentPreviewConverter x:Key="PreviewConv" />
         <local:CountToVisConverter x:Key="CountVis" />
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBoolVis" />
         <BooleanToVisibilityConverter x:Key="BoolVis" />
 
         <SolidColorBrush x:Key="Ink" Color="#241F1A" />
@@ -169,8 +170,22 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="10">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="12,0" VerticalAlignment="Center" />
+                            <Grid>
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="12,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="PlaceholderText"
+                                           Text="{TemplateBinding Tag}"
+                                           Margin="12,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="#A99F94"
+                                           IsHitTestVisible="False"
+                                           Visibility="Collapsed" />
+                            </Grid>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="PlaceholderText" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -399,9 +414,12 @@
                                    VerticalAlignment="Center"
                                    Text="{Binding ., Converter={StaticResource DateConv}}" />
                         <StackPanel x:Name="QuickActions" Grid.Column="1" Orientation="Horizontal" Opacity="0">
-                            <Button Content="复制" Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="CopyCard_Click" />
-                            <Button Content="编辑" Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="EditCard_Click" />
-                            <Button Content="删除" Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="DeleteCard_Click" />
+                            <Button Content="{Binding PrimaryCardActionText, RelativeSource={RelativeSource AncestorType={x:Type local:MainWindow}}}"
+                                    Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="CopyCard_Click" />
+                            <Button Content="{Binding SecondaryCardActionText, RelativeSource={RelativeSource AncestorType={x:Type local:MainWindow}}}"
+                                    Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="EditCard_Click" />
+                            <Button Content="删除" Tag="{Binding}" Style="{StaticResource CardActionButton}" Margin="4,0,0,0" Click="DeleteCard_Click"
+                                    Visibility="{Binding IsTrashView, RelativeSource={RelativeSource AncestorType={x:Type local:MainWindow}}, Converter={StaticResource InverseBoolVis}}" />
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -468,10 +486,23 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="180" />
                     </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" x:Name="SearchBox" Style="{StaticResource SearchBoxStyle}"
-                             ToolTip="搜索标题或内容" TextChanged="SearchBox_TextChanged" />
+                    <Grid Grid.Column="0">
+                        <TextBox x:Name="SearchBox" Style="{StaticResource SearchBoxStyle}"
+                                 Tag="搜索标题或内容"
+                                 ToolTip="搜索标题或内容" TextChanged="SearchBox_TextChanged" />
+                        <Button Content="×"
+                                Width="22" Height="22"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Margin="0,0,8,0"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="{StaticResource Muted}"
+                                Cursor="Hand"
+                                ToolTip="清空搜索"
+                                Click="ClearSearch_Click" />
+                    </Grid>
                     <TextBox Grid.Column="1" x:Name="VarBox" Style="{StaticResource SearchBoxStyle}"
                              Margin="10,0,0,0"
+                             Tag="变量值，如：公司名称"
                              ToolTip="在此输入值，双击含 {{变量名}} 的卡片时自动替换" />
                 </Grid>
 
@@ -496,6 +527,7 @@
             <Border Grid.Column="0" Background="#F7F2EA" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="14,16">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -528,7 +560,22 @@
                             Margin="0,0,0,8"
                             Click="AllCategories_Click"
                             ToolTip="取消分类筛选，显示全部片段" />
-                    <TreeView Grid.Row="2" x:Name="CategoryTree"
+                    <DockPanel Grid.Row="2" Margin="0,0,0,8">
+                        <Button Content="回收站"
+                                Style="{StaticResource NavFilterButton}"
+                                DockPanel.Dock="Left"
+                                Width="112"
+                                Click="Trash_Click"
+                                ToolTip="查看已移入回收站的条目" />
+                        <Button Content="清空"
+                                Style="{StaticResource CardActionButton}"
+                                HorizontalAlignment="Right"
+                                DockPanel.Dock="Right"
+                                Click="ClearTrash_Click"
+                                Visibility="{Binding IsTrashView, Converter={StaticResource BoolVis}}"
+                                ToolTip="永久删除回收站中的所有条目" />
+                    </DockPanel>
+                    <TreeView Grid.Row="3" x:Name="CategoryTree"
                               ItemsSource="{Binding CategoryNodes}"
                               Background="Transparent" BorderThickness="0"
                               ItemContainerStyle="{StaticResource CategoryTreeItemStyle}"
@@ -536,7 +583,7 @@
                               PreviewMouseRightButtonDown="CategoryTree_PreviewMouseRightButtonDown"
                               Drop="CategoryTree_Drop"
                               SelectedItemChanged="CategoryTree_SelectedItemChanged" />
-                    <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                    <StackPanel Grid.Row="4" Margin="0,14,0,0">
                         <TextBlock Text="标签筛选" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Muted}" Margin="4,0,0,8" />
                         <TextBox x:Name="TagSearchBox"
                                  Style="{StaticResource SearchBoxStyle}"
@@ -615,7 +662,7 @@
                 </Border>
 
                 <Grid Grid.Row="1">
-                    <TextBlock Text="暂无内容" FontSize="16" Foreground="#B9AEA2"
+                    <TextBlock Text="{Binding EmptyStateText}" FontSize="16" Foreground="#B9AEA2"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding Items.Count, Converter={StaticResource CountVis}, ConverterParameter=empty}" />
 
@@ -632,6 +679,17 @@
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
                     </ScrollViewer>
+
+                    <Border Background="#241F1A"
+                            CornerRadius="16"
+                            Padding="16,9"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,18"
+                            Opacity="0.94"
+                            Visibility="{Binding HasToastMessage, Converter={StaticResource BoolVis}}">
+                        <TextBlock Text="{Binding ToastMessage}" Foreground="#FFFCF7" FontWeight="SemiBold" />
+                    </Border>
                 </Grid>
             </Grid>
         </Grid>

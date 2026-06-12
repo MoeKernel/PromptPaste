@@ -1,11 +1,14 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using System.Windows.Controls;
 using PromptPaste.Database;
@@ -25,6 +28,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private nint _targetWindowHandle;
     private string _searchText = "";
     private string _tagSearchText = "";
+    private bool _isTrashView;
+    private string _emptyStateText = "暂无内容";
+    private string? _toastMessage;
 
     public ObservableCollection<ClipboardItem> Items { get; } = new();
     public ObservableCollection<CategoryNode> CategoryNodes { get; } = new();
@@ -67,6 +73,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public bool CloseToTray => _settings.CloseToTray;
     public bool StartMinimizedToTray => _settings.StartMinimizedToTray;
+    public bool IsTrashView
+    {
+        get => _isTrashView;
+        private set
+        {
+            if (_isTrashView == value) return;
+            _isTrashView = value;
+            OnPropertyChanged(nameof(IsTrashView));
+            OnPropertyChanged(nameof(PrimaryCardActionText));
+            OnPropertyChanged(nameof(SecondaryCardActionText));
+        }
+    }
+
+    public string PrimaryCardActionText => IsTrashView ? "恢复" : "复制";
+    public string SecondaryCardActionText => IsTrashView ? "彻删" : "编辑";
+    public string EmptyStateText
+    {
+        get => _emptyStateText;
+        private set { _emptyStateText = value; OnPropertyChanged(nameof(EmptyStateText)); }
+    }
+
+    public string? ToastMessage
+    {
+        get => _toastMessage;
+        private set
+        {
+            _toastMessage = value;
+            OnPropertyChanged(nameof(ToastMessage));
+            OnPropertyChanged(nameof(HasToastMessage));
+        }
+    }
+
+    public bool HasToastMessage => !string.IsNullOrWhiteSpace(ToastMessage);
 
     private void OnPropertyChanged(string propertyName)
         => PropertyChanged?.Invoke(this, new(propertyName));
@@ -92,6 +131,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settingsService.RememberDatabase(_settings, _db.DatabasePath);
         LoadData();
         RefreshRecentDatabasesMenu();
+        LogService.Info($"Main window loaded. Database={_db.DatabasePath}");
     }
 
     private DatabaseService CreateStartupDatabase()
@@ -104,8 +144,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             return new DatabaseService(path!, IsDefaultDatabasePath(path));
         }
-        catch
+        catch (Exception ex)
         {
+            LogService.Error($"Open startup database failed, fallback to default: {path}", ex);
             return new DatabaseService(DatabaseService.DefaultDatabasePath, seedSampleData: true);
         }
     }
@@ -119,8 +160,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             StringComparison.OrdinalIgnoreCase);
     }
 
-    private void LoadData()
+    private void LoadData(HashSet<int>? expandedCategoryIds = null)
     {
+        expandedCategoryIds ??= CaptureExpandedCategoryIds();
+
         CategoryNodes.Clear();
         foreach (var node in _db.GetCategoryTree())
             CategoryNodes.Add(node);
@@ -132,6 +175,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReconcileSelectedTags();
         RefreshTagSuggestions();
         ApplyFilter();
+        RestoreExpandedCategoryIds(expandedCategoryIds);
     }
 
     private List<CategoryNode> FlattenCategories()
@@ -151,11 +195,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyFilter()
     {
-        var source = string.IsNullOrWhiteSpace(_searchText)
-            ? _db.GetAllItems()
-            : _db.SearchItems(_searchText);
+        var source = IsTrashView
+            ? _db.GetTrashItems()
+            : string.IsNullOrWhiteSpace(_searchText)
+                ? _db.GetAllItems()
+                : _db.SearchItems(_searchText);
 
-        if (_selectedCategory != null)
+        if (IsTrashView && !string.IsNullOrWhiteSpace(_searchText))
+        {
+            source = source.Where(i => i.Title.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+                                    || i.Content.Contains(_searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        if (!IsTrashView && _selectedCategory != null)
         {
             var ids = new HashSet<int> { _selectedCategory.Id };
             if (IncludeChildrenMenuItem.IsChecked)
@@ -172,12 +224,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Items.Clear();
         foreach (var item in source)
             Items.Add(item);
+        UpdateEmptyState();
+    }
+
+    private void UpdateEmptyState()
+    {
+        if (IsTrashView)
+            EmptyStateText = "回收站为空";
+        else if (!string.IsNullOrWhiteSpace(_searchText) || SelectedTags.Count > 0)
+            EmptyStateText = "没有匹配的片段";
+        else if (_selectedCategory != null)
+            EmptyStateText = "当前分类暂无片段";
+        else
+            EmptyStateText = "暂无片段，点击右上角新建";
+    }
+
+    private void ShowToast(string message)
+    {
+        ToastMessage = message;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.2) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (ToastMessage == message) ToastMessage = null;
+        };
+        timer.Start();
     }
 
     private void CopyToClipboard(string text)
     {
         ClipboardWatcher.MarkInternalCopy(text);
         Clipboard.SetText(text);
+        ShowToast("已复制");
     }
 
     private void ToggleVisibility()
@@ -224,6 +302,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplyFilter();
     }
 
+    private void ClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        e.Handled = true;
+    }
+
     // ── Add ──
 
     private void AddBtn_Click(object sender, RoutedEventArgs e)
@@ -235,6 +319,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Card_MouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsTrashView) return;
         if (e.ClickCount != 2) return;
         if (sender is not FrameworkElement fe) return;
         if (fe.DataContext is ClipboardItem item) PasteItem(item);
@@ -247,11 +332,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (item == null) return;
 
         var menu = new ContextMenu();
-        AddMenuItem(menu, "粘贴到当前窗口", (_, _) => PasteItem(item));
-        AddMenuItem(menu, "仅复制", (_, _) => CopyOnly(item));
-        menu.Items.Add(new Separator());
-        AddMenuItem(menu, "编辑", (_, _) => { _ = ShowItemDialog(item.Clone()); });
-        AddMenuItem(menu, "删除", (_, _) => DeleteItem(item));
+        if (IsTrashView)
+        {
+            AddMenuItem(menu, "恢复", (_, _) => RestoreItem(item));
+            AddMenuItem(menu, "永久删除", (_, _) => PermanentDeleteItem(item));
+        }
+        else
+        {
+            AddMenuItem(menu, "粘贴到当前窗口", (_, _) => PasteItem(item));
+            AddMenuItem(menu, "仅复制", (_, _) => CopyOnly(item));
+            menu.Items.Add(new Separator());
+            AddMenuItem(menu, "编辑", (_, _) => { _ = ShowItemDialog(item.Clone()); });
+            if (_selectedCategory != null)
+                AddMenuItem(menu, "从当前分类移除", (_, _) => RemoveItemFromCurrentCategory(item));
+            AddMenuItem(menu, "移入回收站", (_, _) => MoveItemToTrash(item));
+        }
         menu.IsOpen = true;
         menu.PlacementTarget = fe;
         e.Handled = true;
@@ -260,21 +355,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void CopyCard_Click(object sender, RoutedEventArgs e)
     {
         if (GetCardItem(sender) is ClipboardItem item)
-            CopyOnly(item);
+        {
+            if (IsTrashView) RestoreItem(item);
+            else CopyOnly(item);
+        }
         e.Handled = true;
     }
 
     private void EditCard_Click(object sender, RoutedEventArgs e)
     {
         if (GetCardItem(sender) is ClipboardItem item)
-            _ = ShowItemDialog(item.Clone());
+        {
+            if (IsTrashView) PermanentDeleteItem(item);
+            else _ = ShowItemDialog(item.Clone());
+        }
         e.Handled = true;
     }
 
     private void DeleteCard_Click(object sender, RoutedEventArgs e)
     {
         if (GetCardItem(sender) is ClipboardItem item)
-            DeleteItem(item);
+            MoveItemToTrash(item);
         e.Handled = true;
     }
 
@@ -297,6 +398,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PasteService.PasteToForeWindow(hwnd, content);
         _db.IncrementUsageCount(item.Id);
         ApplyFilter();
+        ShowToast("已粘贴");
     }
 
     private void CopyOnly(ClipboardItem item)
@@ -327,14 +429,64 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             : null;
     }
 
-    private void DeleteItem(ClipboardItem item)
+    private void MoveItemToTrash(ClipboardItem item)
     {
-        if (MessageBox.Show($"确定删除「{item.Title}」吗？", "确认删除",
+        if (MessageBox.Show($"确定将「{item.Title}」移入回收站吗？", "移入回收站",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
 
-        _db.DeleteItem(item.Id);
+        BackupService.BackupDatabase(_db.DatabasePath, "before-trash");
+        _db.MoveItemToTrash(item.Id);
         Items.Remove(item);
+        LoadData();
+        ShowToast("已移入回收站");
+    }
+
+    private void RemoveItemFromCurrentCategory(ClipboardItem item)
+    {
+        if (_selectedCategory == null) return;
+        if (MessageBox.Show($"确定从「{_selectedCategory.Name}」移除「{item.Title}」吗？条目仍会保留在其他分类中。", "从当前分类移除",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        _db.RemoveItemFromCategory(item.Id, _selectedCategory.Id);
+        Items.Remove(item);
+        LoadData();
+        ShowToast("已从当前分类移除");
+    }
+
+    private void RestoreItem(ClipboardItem item)
+    {
+        _db.RestoreItemFromTrash(item.Id);
+        Items.Remove(item);
+        LoadData();
+        ShowToast("已恢复");
+    }
+
+    private void PermanentDeleteItem(ClipboardItem item)
+    {
+        if (MessageBox.Show($"永久删除「{item.Title}」？此操作不可恢复。", "永久删除",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        BackupService.BackupDatabase(_db.DatabasePath, "before-permanent-delete");
+        _db.PermanentDeleteItem(item.Id);
+        Items.Remove(item);
+        LoadData();
+        ShowToast("已永久删除");
+    }
+
+    private void ClearTrash_Click(object sender, RoutedEventArgs e)
+    {
+        if (!IsTrashView) return;
+        if (MessageBox.Show("确定清空回收站吗？此操作不可恢复。", "清空回收站",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        BackupService.BackupDatabase(_db.DatabasePath, "before-clear-trash");
+        _db.ClearTrash();
+        LoadData();
+        ShowToast("已清空回收站");
     }
 
     // ── Dialogs ──
@@ -350,6 +502,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         else
             _db.UpdateItem(dialog.Result);
         LoadData();
+        ShowToast(item == null ? "已新建片段" : "已保存片段");
         return true;
     }
 
@@ -372,11 +525,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void CategoryTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         _selectedCategory = e.NewValue as CategoryNode;
+        IsTrashView = false;
         ApplyFilter();
     }
 
     private void AllCategories_Click(object sender, RoutedEventArgs e)
     {
+        IsTrashView = false;
+        _selectedCategory = null;
+        ClearTreeViewSelection(CategoryTree);
+        ApplyFilter();
+        e.Handled = true;
+    }
+
+    private void Trash_Click(object sender, RoutedEventArgs e)
+    {
+        IsTrashView = true;
         _selectedCategory = null;
         ClearTreeViewSelection(CategoryTree);
         ApplyFilter();
@@ -494,15 +658,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (e.Data.GetDataPresent(typeof(CategoryNode)) && e.Data.GetData(typeof(CategoryNode)) is CategoryNode source)
         {
-            _db.MoveCategory(source.Id, target.Id);
-            LoadData();
+            var expanded = CaptureExpandedCategoryIds();
+            expanded.Add(target.Id);
+            try
+            {
+                if (MessageBox.Show($"将「{source.Name}」移动到「{target.Name}」下；如果存在同名分类将自动合并。是否继续？", "移动或合并分类",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                    return;
+                _db.MoveOrMergeCategory(source.Id, target.Id);
+                LoadData(expanded);
+                ShowToast("分类已移动或合并");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Move or merge category failed", ex);
+                MessageBox.Show($"移动或合并分类失败：{ex.Message}", "分类操作失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             return;
         }
 
         if (e.Data.GetDataPresent(typeof(ClipboardItem)) && e.Data.GetData(typeof(ClipboardItem)) is ClipboardItem item)
         {
+            var expanded = CaptureExpandedCategoryIds();
+            expanded.Add(target.Id);
             _db.AddItemToCategory(item.Id, target.Id);
-            LoadData();
+            LoadData(expanded);
+            ShowToast("已加入分类");
         }
     }
 
@@ -528,8 +709,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var name = PromptText(title, "分类名称：");
         if (string.IsNullOrWhiteSpace(name)) return;
 
+        var expanded = CaptureExpandedCategoryIds();
+        if (parent != null) expanded.Add(parent.Id);
         _db.CreateCategory(name, parent?.Id);
-        LoadData();
+        LoadData(expanded);
     }
 
     private void AddSubCategory_Click(object sender, RoutedEventArgs e)
@@ -537,8 +720,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var parent = _contextCategory;
         var name = PromptText("新增子分类", "分类名称：");
         if (string.IsNullOrWhiteSpace(name)) return;
+        var expanded = CaptureExpandedCategoryIds();
+        if (parent != null) expanded.Add(parent.Id);
         _db.CreateCategory(name, parent?.Id);
-        LoadData();
+        LoadData(expanded);
     }
 
     private void RenameCategory_Click(object sender, RoutedEventArgs e)
@@ -547,8 +732,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (category == null) return;
         var name = PromptText("重命名分类", "新名称：", category.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
+        var expanded = CaptureExpandedCategoryIds();
         _db.RenameCategory(category.Id, name);
-        LoadData();
+        LoadData(expanded);
     }
 
     private void DeleteCategory_Click(object sender, RoutedEventArgs e)
@@ -556,9 +742,64 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var category = _contextCategory;
         if (category == null) return;
         if (MessageBox.Show($"删除「{category.Name}」及其子分类？片段不会被删除。", "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        BackupService.BackupDatabase(_db.DatabasePath, "before-delete-category");
+        var expanded = CaptureExpandedCategoryIds();
+        var parentId = category.ParentId;
         _db.DeleteCategoryCascade(category.Id);
+        expanded.Remove(category.Id);
+        if (parentId != null) expanded.Add(parentId.Value);
         _selectedCategory = null;
-        LoadData();
+        LoadData(expanded);
+        ShowToast("分类已删除");
+    }
+
+    private HashSet<int> CaptureExpandedCategoryIds()
+    {
+        var ids = new HashSet<int>();
+        if (!IsInitialized) return ids;
+
+        CategoryTree.UpdateLayout();
+        foreach (var item in CategoryTree.Items)
+            CaptureExpandedCategoryIds(CategoryTree.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem, ids);
+        return ids;
+    }
+
+    private static void CaptureExpandedCategoryIds(TreeViewItem? treeItem, HashSet<int> ids)
+    {
+        if (treeItem == null) return;
+
+        if (treeItem.IsExpanded && treeItem.DataContext is CategoryNode node)
+            ids.Add(node.Id);
+
+        treeItem.UpdateLayout();
+        foreach (var child in treeItem.Items)
+            CaptureExpandedCategoryIds(treeItem.ItemContainerGenerator.ContainerFromItem(child) as TreeViewItem, ids);
+    }
+
+    private void RestoreExpandedCategoryIds(HashSet<int> ids)
+    {
+        if (ids.Count == 0) return;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            CategoryTree.UpdateLayout();
+            foreach (var item in CategoryTree.Items)
+                RestoreExpandedCategoryIds(CategoryTree.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem, ids);
+        }, DispatcherPriority.Loaded);
+    }
+
+    private static void RestoreExpandedCategoryIds(TreeViewItem? treeItem, HashSet<int> ids)
+    {
+        if (treeItem == null) return;
+
+        if (treeItem.DataContext is CategoryNode node && ids.Contains(node.Id))
+        {
+            treeItem.IsExpanded = true;
+            treeItem.UpdateLayout();
+        }
+
+        foreach (var child in treeItem.Items)
+            RestoreExpandedCategoryIds(treeItem.ItemContainerGenerator.ContainerFromItem(child) as TreeViewItem, ids);
     }
 
     private static void ClearTreeViewSelection(TreeView tree)
@@ -629,7 +870,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize
         };
-        var box = new TextBox { Text = initial, Margin = new Thickness(0, 8, 0, 12) };
+        var box = new TextBox { Text = initial, Margin = new Thickness(0, 8, 0, 12), Focusable = true };
         var ok = new Button { Content = "确定", Width = 72, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         var cancel = new Button { Content = "取消", Width = 72, IsCancel = true };
         ok.Click += (_, _) => win.DialogResult = true;
@@ -638,6 +879,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         panel.Children.Add(box);
         panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } });
         win.Content = panel;
+        win.Loaded += (_, _) =>
+        {
+            win.Dispatcher.BeginInvoke(() =>
+            {
+                box.Focus();
+                Keyboard.Focus(box);
+                box.SelectAll();
+            }, DispatcherPriority.Input);
+        };
         return win.ShowDialog() == true ? box.Text.Trim() : null;
     }
 
@@ -670,10 +920,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _settingsService.RememberDatabase(_settings, _db.DatabasePath);
             LoadData();
             RefreshRecentDatabasesMenu();
+            ShowToast("已切换数据库");
+            LogService.Info($"Database switched: {_db.DatabasePath}");
         }
         catch (Exception ex)
         {
             next?.Dispose();
+            LogService.Error($"Open database failed: {dbPath}", ex);
             MessageBox.Show($"打开数据库失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -714,7 +967,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Options_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OptionsDialog(_settings) { Owner = this };
+        var dialog = new OptionsDialog(_settings, _db.DatabasePath) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
         ApplySettings(dialog.Result);
@@ -737,6 +990,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (!_settings.EnableClipboardWatcher)
             PendingClipboardText = null;
+        ShowToast("选项已保存");
     }
 
     private void Import_Click(object sender, RoutedEventArgs e)
@@ -749,12 +1003,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var json = File.ReadAllText(dlg.FileName, Encoding.UTF8);
             var items = JsonSerializer.Deserialize<List<ExportClipboardItem>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (items == null || items.Count == 0) return;
-            _db.ImportData(items);
+            if (MessageBox.Show($"将导入 {items.Count} 条 JSON 记录。导入前会自动备份当前数据库，是否继续？", "导入数据",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            BackupService.BackupDatabase(_db.DatabasePath, "before-import");
+            var imported = _db.ImportData(items);
             LoadData();
-            MessageBox.Show($"成功导入 {items.Count} 条记录", "导入成功");
+            ShowToast($"已导入 {imported} 条记录");
+            MessageBox.Show($"成功导入 {imported} 条记录，跳过 {items.Count - imported} 条无效记录。", "导入成功");
         }
         catch (Exception ex)
         {
+            LogService.Error("Import failed", ex);
             MessageBox.Show($"导入失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -773,10 +1034,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
             File.WriteAllText(dlg.FileName, json, Encoding.UTF8);
+            ShowToast("已导出");
             MessageBox.Show($"成功导出 {items.Count} 条记录", "导出成功");
         }
         catch (Exception ex)
         {
+            LogService.Error("Export failed", ex);
             MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -788,7 +1051,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("PromptPaste 2.0\n\n剪贴板管理工具\n基于 WPF 构建", "关于 PromptPaste");
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.0";
+        MessageBox.Show(
+            $"PromptPaste {version}\n\n剪贴板管理工具\n基于 WPF 构建\n\n数据库：{_db.DatabasePath}\n配置：{_settingsService.SettingsPath}\n数据目录：{DatabaseService.AppDataDirectory}",
+            "关于 PromptPaste");
     }
 
     // ── Helpers ──

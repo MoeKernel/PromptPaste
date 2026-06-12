@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
 using PromptPaste.Services;
 
@@ -13,7 +14,22 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            LogService.Error("Unhandled UI exception", args.Exception);
+            MessageBox.Show($"应用发生错误：{args.Exception.Message}", "PromptPaste", MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            LogService.Error("Unhandled application exception", args.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            LogService.Error("Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+
         base.OnStartup(e);
+        LogService.Info("Application starting");
 
         _mainWindow = new MainWindow();
 
@@ -62,6 +78,7 @@ public partial class App : Application
 
     public void ShutdownApp()
     {
+        LogService.Info("Application shutting down");
         _isShuttingDown = true;
         _mainWindow?.Close();
         _tray?.Dispose();

@@ -7,6 +7,11 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>..\resources\icons\app_icon.ico</ApplicationIcon>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <Product>PromptPaste</Product>
+    <Authors>PromptPaste</Authors>
   </PropertyGroup>
 
   <ItemGroup>

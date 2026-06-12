@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using PromptPaste.Database;
 using PromptPaste.Models;
 using PromptPaste.Services;
 
@@ -8,13 +11,16 @@ namespace PromptPaste.Views.Dialogs;
 public partial class OptionsDialog : Window
 {
     private string _hotKey;
+    private readonly string _databasePath;
+    private readonly AppSettingsService _settingsService = new();
 
     public AppSettings Result { get; }
 
-    public OptionsDialog(AppSettings settings)
+    public OptionsDialog(AppSettings settings, string databasePath)
     {
         InitializeComponent();
         Result = settings.Clone();
+        _databasePath = databasePath;
         _hotKey = string.IsNullOrWhiteSpace(Result.HotKey) ? "Ctrl+Shift+M" : Result.HotKey;
 
         EnableHotKeyBox.IsChecked = Result.EnableGlobalHotKey;
@@ -22,6 +28,8 @@ public partial class OptionsDialog : Window
         EnableClipboardBox.IsChecked = Result.EnableClipboardWatcher;
         StartMinimizedBox.IsChecked = Result.StartMinimizedToTray;
         CloseToTrayBox.IsChecked = Result.CloseToTray;
+        DatabasePathBox.Text = _databasePath;
+        SettingsPathBox.Text = _settingsService.SettingsPath;
     }
 
     private void HotKeyBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -81,5 +89,23 @@ public partial class OptionsDialog : Window
         if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
         parts.Add(key == Key.Space ? "Space" : key.ToString());
         return string.Join("+", parts);
+    }
+
+    private void OpenDataDir_Click(object sender, RoutedEventArgs e)
+        => OpenDirectory(DatabaseService.AppDataDirectory);
+
+    private void OpenLogDir_Click(object sender, RoutedEventArgs e)
+        => OpenDirectory(LogService.LogDirectory);
+
+    private void BackupNow_Click(object sender, RoutedEventArgs e)
+    {
+        var path = BackupService.BackupDatabase(_databasePath, "manual");
+        BackupHint.Text = path == null ? "备份失败，请查看日志。" : $"已备份到：{path}";
+    }
+
+    private static void OpenDirectory(string path)
+    {
+        Directory.CreateDirectory(path);
+        Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
     }
 }

@@ -9,6 +9,7 @@ public class ClipboardItem
     public int UsageCount { get; set; }
     public DateTime? LastUsed { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? DeletedAt { get; set; }
     public List<int> CategoryIds { get; set; } = new();
     public List<string> CategoryPaths { get; set; } = new();
     public List<string> Tags { get; set; } = new();
@@ -22,6 +23,7 @@ public class ClipboardItem
         UsageCount = UsageCount,
         LastUsed = LastUsed,
         CreatedAt = CreatedAt,
+        DeletedAt = DeletedAt,
         CategoryIds = CategoryIds.ToList(),
         CategoryPaths = CategoryPaths.ToList(),
         Tags = Tags.ToList()
