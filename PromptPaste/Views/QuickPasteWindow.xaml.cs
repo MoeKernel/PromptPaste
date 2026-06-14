@@ -138,6 +138,7 @@ public sealed class QuickPasteCandidate
     public ClipboardItem Item { get; }
     public string Title => Item.Title;
     public string Preview => TextProcessor.Truncate(Item.Content.Replace("\r", " ").Replace("\n", " "), 90);
+    public string FullContent => Item.Content;
     public IReadOnlyList<string> Tags => Item.Tags;
 
     public QuickPasteCandidate(ClipboardItem item) => Item = item;

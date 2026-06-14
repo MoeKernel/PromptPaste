@@ -1,0 +1,56 @@
+<Window x:Class="PromptPaste.Views.Dialogs.LicenseDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="许可证" Width="680" Height="560"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#F4F1EA"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#241F1A" />
+        <SolidColorBrush x:Key="Muted" Color="#7A7167" />
+        <SolidColorBrush x:Key="Line" Color="#E3DDD2" />
+        <SolidColorBrush x:Key="Panel" Color="#FFFCF7" />
+
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="18" Padding="20" Background="{StaticResource Panel}" CornerRadius="18" BorderBrush="{StaticResource Line}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <TextBlock Text="开源许可证" FontSize="22" FontWeight="Bold" Foreground="{StaticResource Ink}" />
+                <TextBlock Text="PromptPaste 使用 MIT License 开源。" Margin="0,5,0,0" Foreground="{StaticResource Muted}" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Margin="0,0,0,10" TextWrapping="Wrap" Foreground="{StaticResource Ink}">
+                <Run Text="许可证类型：" FontWeight="SemiBold" />
+                <Run Text="MIT License；版权主体：PromptPaste。" />
+            </TextBlock>
+
+            <TextBox Grid.Row="2" x:Name="LicenseBox"
+                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                     FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI"
+                     FontSize="12.5" Padding="12"
+                     Background="#FFF8EF" BorderBrush="{StaticResource Line}" BorderThickness="1" />
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Content="关闭" Style="{StaticResource DialogButton}" IsCancel="True" Click="Close_Click" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

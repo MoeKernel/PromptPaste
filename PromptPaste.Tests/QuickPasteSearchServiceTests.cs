@@ -48,3 +48,23 @@ public class QuickPasteSearchServiceTests
         Assert.Equal(1, Assert.Single(result).Id);
     }
 }
+
+public class QuickPasteCandidateTests
+{
+    [Fact]
+    public void FullContentKeepsOriginalTextForTooltip()
+    {
+        var item = new ClipboardItem
+        {
+            Id = 1,
+            Title = "长内容",
+            Content = "第一行\r\n第二行，这是用于悬停提示展示的完整内容。"
+        };
+
+        var candidate = new PromptPaste.Views.QuickPasteCandidate(item);
+
+        Assert.Equal(item.Content, candidate.FullContent);
+        Assert.DoesNotContain("\r", candidate.Preview);
+        Assert.DoesNotContain("\n", candidate.Preview);
+    }
+}

@@ -21,6 +21,18 @@
         <SolidColorBrush x:Key="CandidateSelected" Color="#F1D6BF" />
         <SolidColorBrush x:Key="CandidateSelectedBorder" Color="#B4532A" />
 
+        <Style x:Key="QuickPasteToolTipStyle" TargetType="ToolTip">
+            <Setter Property="MaxWidth" Value="520" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Placement" Value="Mouse" />
+        </Style>
+
         <Style x:Key="CandidateItemStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="Margin" Value="0,0,0,6" />
@@ -84,13 +96,28 @@
                      Margin="0,8,0,0"
                      BorderThickness="0"
                      Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ItemContainerStyle="{StaticResource CandidateItemStyle}"
                      MouseDoubleClick="CandidateList_MouseDoubleClick">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel>
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Preview}" Margin="0,3,0,0" Foreground="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        <StackPanel ToolTipService.InitialShowDelay="250" ToolTipService.ShowDuration="60000">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis">
+                                <TextBlock.ToolTip>
+                                    <ToolTip Style="{StaticResource QuickPasteToolTipStyle}"
+                                             DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" MaxWidth="500" />
+                                    </ToolTip>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                            <TextBlock Text="{Binding Preview}" Margin="0,3,0,0" Foreground="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis">
+                                <TextBlock.ToolTip>
+                                    <ToolTip Style="{StaticResource QuickPasteToolTipStyle}"
+                                             DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                        <TextBlock Text="{Binding FullContent}" TextWrapping="Wrap" MaxWidth="500" />
+                                    </ToolTip>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
                             <ItemsControl ItemsSource="{Binding Tags}" Margin="0,6,0,0">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -98,7 +125,13 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="#F1E2D2" CornerRadius="8" Padding="6,2" Margin="0,0,5,4">
-                                            <TextBlock Text="{Binding}" Foreground="#8F3F1E" FontSize="11" />
+                                            <Border.ToolTip>
+                                                <ToolTip Style="{StaticResource QuickPasteToolTipStyle}"
+                                                         DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="500" />
+                                                </ToolTip>
+                                            </Border.ToolTip>
+                                            <TextBlock Text="{Binding}" Foreground="#8F3F1E" FontSize="11" TextTrimming="CharacterEllipsis" />
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

@@ -1239,6 +1239,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         new LogViewerDialog { Owner = this }.ShowDialog();
     }
 
+    private void License_Click(object sender, RoutedEventArgs e)
+    {
+        new LicenseDialog { Owner = this }.ShowDialog();
+    }
+
     private void Options_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OptionsDialog(_settings, _db.DatabasePath) { Owner = this };

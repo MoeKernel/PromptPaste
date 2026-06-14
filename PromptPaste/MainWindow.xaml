@@ -491,6 +491,7 @@
                     <MenuItem Header="帮助">
                         <MenuItem Header="JSON格式说明" Click="JsonFormat_Click" />
                         <MenuItem Header="查看日志" Click="ViewLogs_Click" />
+                        <MenuItem Header="许可证" Click="License_Click" />
                         <Separator />
                         <MenuItem Header="关于" Click="About_Click" />
                     </MenuItem>
