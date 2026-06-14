@@ -64,6 +64,30 @@ public class DatabaseServiceTests
     }
 
     [Fact]
+    public void GetUncategorizedItems_ReturnsOnlyItemsWithoutCategoryRelations()
+    {
+        using var fixture = new TestDatabase();
+        var categoryId = fixture.Db.CreateCategory("已分类", null);
+        var categorizedId = fixture.Db.AddItem(new ClipboardItem
+        {
+            Title = "已分类条目",
+            Content = "内容",
+            CategoryIds = new List<int> { categoryId },
+            CategoryPaths = new List<string> { "已分类" }
+        });
+        var uncategorizedId = fixture.Db.AddItem(new ClipboardItem
+        {
+            Title = "未分类条目",
+            Content = "内容"
+        });
+
+        var items = fixture.Db.GetUncategorizedItems();
+
+        Assert.Contains(items, i => i.Id == uncategorizedId);
+        Assert.DoesNotContain(items, i => i.Id == categorizedId);
+    }
+
+    [Fact]
     public void LegacyItemType_IsMigratedToCategoryRelation()
     {
         var directory = Path.Combine(Path.GetTempPath(), "PromptPaste.Tests", Guid.NewGuid().ToString("N"));

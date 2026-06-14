@@ -210,6 +210,9 @@ public class DatabaseService : IDisposable
 
     public ClipboardItem? GetItem(int id) => GetAllItems().FirstOrDefault(i => i.Id == id);
 
+    public List<ClipboardItem> GetUncategorizedItems()
+        => GetAllItems().Where(i => i.CategoryIds.Count == 0).ToList();
+
     public List<ClipboardItem> GetTrashItems()
     {
         var items = new List<ClipboardItem>();

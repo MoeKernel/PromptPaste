@@ -73,12 +73,44 @@
             </StackPanel>
 
             <StackPanel Grid.Row="2" Margin="0,0,0,12">
-                <TextBlock Text="分类（可多选）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
-                <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Padding="10" MaxHeight="120">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <WrapPanel x:Name="CategoriesPanel" />
-                    </ScrollViewer>
+                <TextBlock Text="分类（可多选，支持搜索）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
+                <TextBox x:Name="CategorySearchBox"
+                         Style="{StaticResource FieldTextBox}"
+                         Margin="0,0,0,8"
+                         ToolTip="输入分类名称或路径进行筛选"
+                         TextChanged="CategorySearchBox_TextChanged" />
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Padding="8" MaxHeight="150">
+                    <TreeView x:Name="CategoryTree"
+                              BorderThickness="0"
+                              Background="Transparent" />
                 </Border>
+                <ItemsControl x:Name="SelectedCategoriesPanel" Margin="0,8,0,0" MaxHeight="48" ClipToBounds="True">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="#F1E2D2" CornerRadius="10" Padding="8,3" Margin="0,0,6,6">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Path}" Foreground="{StaticResource AccentDark}" FontSize="11.5" VerticalAlignment="Center" />
+                                    <Button Content="×"
+                                            Tag="{Binding Id}"
+                                            Margin="6,0,0,0"
+                                            Padding="0"
+                                            Width="14" Height="14"
+                                            FontSize="12"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Foreground="{StaticResource Muted}"
+                                            Cursor="Hand"
+                                            Click="RemoveSelectedCategory_Click" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
 
             <StackPanel Grid.Row="3" Margin="0,0,0,12">

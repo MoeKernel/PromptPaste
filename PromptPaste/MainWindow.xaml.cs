@@ -29,6 +29,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _searchText = "";
     private string _tagSearchText = "";
     private bool _isTrashView;
+    private bool _isUncategorizedView;
     private string _emptyStateText = "暂无内容";
     private string? _toastMessage;
 
@@ -42,6 +43,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private CategoryNode? _contextCategory;
     private CategoryNode? _dragCategory;
     private ClipboardItem? _dragItem;
+    private bool _suppressCategorySelectionChanged;
 
     private int _itemCount;
     public int ItemCount
@@ -197,9 +199,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var source = IsTrashView
             ? _db.GetTrashItems()
-            : string.IsNullOrWhiteSpace(_searchText)
-                ? _db.GetAllItems()
-                : _db.SearchItems(_searchText);
+            : _isUncategorizedView && string.IsNullOrWhiteSpace(_searchText)
+                ? _db.GetUncategorizedItems()
+                : string.IsNullOrWhiteSpace(_searchText)
+                    ? _db.GetAllItems()
+                    : _db.SearchItems(_searchText);
 
         if (IsTrashView && !string.IsNullOrWhiteSpace(_searchText))
         {
@@ -207,7 +211,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                                     || i.Content.Contains(_searchText, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
-        if (!IsTrashView && _selectedCategory != null)
+        if (!IsTrashView && _isUncategorizedView && !string.IsNullOrWhiteSpace(_searchText))
+        {
+            source = source.Where(i => i.CategoryIds.Count == 0).ToList();
+        }
+
+        if (!IsTrashView && !_isUncategorizedView && _selectedCategory != null)
         {
             var ids = new HashSet<int> { _selectedCategory.Id };
             if (IncludeChildrenMenuItem.IsChecked)
@@ -231,6 +240,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (IsTrashView)
             EmptyStateText = "回收站为空";
+        else if (_isUncategorizedView)
+            EmptyStateText = "未分类暂无片段";
         else if (!string.IsNullOrWhiteSpace(_searchText) || SelectedTags.Count > 0)
             EmptyStateText = "没有匹配的片段";
         else if (_selectedCategory != null)
@@ -312,7 +323,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void AddBtn_Click(object sender, RoutedEventArgs e)
     {
-        _ = ShowItemDialog(null);
+        _ = ShowItemDialog(null, defaultCategoryIds: GetDefaultCategoryIdsForNewItem());
     }
 
     // ── Card interactions ──
@@ -491,9 +502,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ── Dialogs ──
 
-    private bool ShowItemDialog(ClipboardItem? item, string? clipboardContent = null)
+    private bool ShowItemDialog(ClipboardItem? item, string? clipboardContent = null, IEnumerable<int>? defaultCategoryIds = null)
     {
-        var dialog = new ItemDialog(item, _db.GetAllCategoriesFlat(), _db.GetTags(), clipboardContent) { Owner = this };
+        var dialog = new ItemDialog(item, _db.GetAllCategoriesFlat(), _db.GetTags(), clipboardContent, defaultCategoryIds) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result == null)
             return false;
 
@@ -506,12 +517,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return true;
     }
 
+    private IEnumerable<int> GetDefaultCategoryIdsForNewItem()
+        => !IsTrashView && !_isUncategorizedView && _selectedCategory != null
+            ? new[] { _selectedCategory.Id }
+            : Array.Empty<int>();
+
     private void SavePendingClipboard_Click(object sender, RoutedEventArgs e)
     {
         var text = PendingClipboardText;
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        if (ShowItemDialog(null, text))
+        if (ShowItemDialog(null, text, GetDefaultCategoryIdsForNewItem()))
             PendingClipboardText = null;
     }
 
@@ -524,16 +540,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CategoryTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        if (_suppressCategorySelectionChanged) return;
+
         _selectedCategory = e.NewValue as CategoryNode;
         IsTrashView = false;
+        _isUncategorizedView = false;
         ApplyFilter();
     }
 
     private void AllCategories_Click(object sender, RoutedEventArgs e)
     {
         IsTrashView = false;
+        _isUncategorizedView = false;
         _selectedCategory = null;
-        ClearTreeViewSelection(CategoryTree);
+        ClearTreeViewSelectionSuppressingEvents();
         ApplyFilter();
         e.Handled = true;
     }
@@ -541,10 +561,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Trash_Click(object sender, RoutedEventArgs e)
     {
         IsTrashView = true;
+        _isUncategorizedView = false;
         _selectedCategory = null;
-        ClearTreeViewSelection(CategoryTree);
+        ClearTreeViewSelectionSuppressingEvents();
         ApplyFilter();
         e.Handled = true;
+    }
+
+    private void Uncategorized_Click(object sender, RoutedEventArgs e)
+    {
+        IsTrashView = false;
+        _isUncategorizedView = true;
+        _selectedCategory = null;
+        ClearTreeViewSelectionSuppressingEvents();
+        ApplyFilter();
+        e.Handled = true;
+    }
+
+    private void ClearTreeViewSelectionSuppressingEvents()
+    {
+        _suppressCategorySelectionChanged = true;
+        try
+        {
+            ClearTreeViewSelection(CategoryTree);
+        }
+        finally
+        {
+            _suppressCategorySelectionChanged = false;
+        }
     }
 
     private void IncludeChildrenMenuItem_Click(object sender, RoutedEventArgs e) => ApplyFilter();
