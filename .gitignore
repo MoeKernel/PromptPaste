@@ -76,7 +76,10 @@ ehthumbs.db
 Thumbs.db
 
 # 项目特有忽略项
-# 注意：如果promptpaste.db是用户数据而非示例数据，取消下面的注释
+# 根目录数据库文件通常是本地误生成的用户数据；示例库放在 resources/db/
+/promptpaste.db
+/promptpaste.db-journal
+# 如需忽略所有数据库文件，再启用下面两行
 # *.db
 # *.db-journal
 
