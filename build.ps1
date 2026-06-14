@@ -15,6 +15,42 @@ $TempObj = Join-Path $ProjectDir 'obj'
 $TempBin = Join-Path $WorkDir 'bin'
 $BackupOutput = Join-Path $Root 'bin.__backup__'
 $DeployOutput = 'D:\Protable\PromptPaste'
+$BuildLogDir = Join-Path $Root 'docs/log'
+$BuildSuccessCounterFile = Join-Path $BuildLogDir 'build-success-count.txt'
+
+function Update-BuildSuccessCounter {
+    param(
+        [string]$Path,
+        [string]$Configuration,
+        [string]$OutputPath
+    )
+
+    $count = 0
+    if (Test-Path $Path) {
+        $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+        if ($content -match 'BuildSuccessCount=(\d+)') {
+            $count = [int]$Matches[1]
+        }
+        elseif (($content.Trim()) -match '^\d+$') {
+            $count = [int]$content.Trim()
+        }
+    }
+
+    $count++
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    @(
+        "BuildSuccessCount=$count"
+        "LastSuccessAt=$([DateTimeOffset]::Now.ToString('o'))"
+        "LastConfiguration=$Configuration"
+        "LastOutput=$OutputPath"
+    ) | Set-Content -Path $Path -Encoding UTF8
+
+    return $count
+}
 
 if (-not (Test-Path $Project)) {
     throw "Project file not found: $Project"
@@ -111,7 +147,10 @@ try {
         throw "Debug/documentation symbols found in publish output: $($symbols[0].FullName)"
     }
 
+    $buildSuccessCount = Update-BuildSuccessCounter -Path $BuildSuccessCounterFile -Configuration $Configuration -OutputPath $FinalOutput
+
     Write-Host "Build succeeded: $FinalOutput"
+    Write-Host "Build success count: $buildSuccessCount"
     if ($deployed) {
         Write-Host "Deployed to: $DeployOutput"
     }

@@ -14,6 +14,7 @@ using System.Windows.Controls;
 using PromptPaste.Database;
 using PromptPaste.Models;
 using PromptPaste.Services;
+using PromptPaste.Views;
 using PromptPaste.Views.Dialogs;
 
 namespace PromptPaste;
@@ -23,6 +24,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly AppSettingsService _settingsService = new();
     private readonly ClipboardWatcher _watcher;
     private readonly HotKeyService _hotkey;
+    private readonly HotKeyService _quickPasteGlobalHotKey;
+    private readonly LowLevelHotKeyService _quickPasteKeyboardHook;
     private AppSettings _settings = new();
     private DatabaseService _db = null!;
     private nint _targetWindowHandle;
@@ -120,15 +123,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         InitializeComponent();
         DataContext = this;
+        PreviewKeyDown += MainWindow_PreviewKeyDown;
         Items.CollectionChanged += (_, _) => ItemCount = Items.Count;
 
         _watcher = new ClipboardWatcher(OnClipboardChanged);
         _hotkey = new HotKeyService(this, ToggleVisibility);
+        _quickPasteGlobalHotKey = new HotKeyService(this, ShowQuickPaste);
+        _quickPasteKeyboardHook = new LowLevelHotKeyService(ShowQuickPaste);
 
         Loaded += (_, _) =>
         {
             _watcher.Start(this);
-            _hotkey.Register(_settings.HotKey, _settings.EnableGlobalHotKey);
+            if (!_hotkey.Register(_settings.HotKey, _settings.EnableGlobalHotKey))
+                ShowToast("唤出热键注册失败，请在选项中更换");
+            RegisterQuickPasteHotKey(_settings);
         };
 
         _settingsService.RememberDatabase(_settings, _db.DatabasePath);
@@ -280,6 +288,87 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ClipboardWatcher.MarkInternalCopy(text);
         Clipboard.SetText(text);
         ShowToast("已复制");
+    }
+
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_settings.EnableQuickPasteHotKey) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var hotKeyText = FormatCurrentHotKey(Keyboard.Modifiers, key);
+        if (!string.Equals(hotKeyText, _settings.QuickPasteHotKey, StringComparison.OrdinalIgnoreCase)) return;
+
+        e.Handled = true;
+        ShowQuickPaste();
+    }
+
+    private static string FormatCurrentHotKey(ModifierKeys modifiers, Key key)
+    {
+        var parts = new List<string>();
+        if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
+        if (modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
+        if (modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
+        if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
+        parts.Add(key == Key.Space ? "Space" : key.ToString());
+        return string.Join("+", parts);
+    }
+
+    private bool RegisterQuickPasteHotKey(AppSettings settings)
+    {
+        _quickPasteKeyboardHook.Unregister();
+        var globalRegistered = _quickPasteGlobalHotKey.Register(settings.QuickPasteHotKey, settings.EnableQuickPasteHotKey);
+        var hookRegistered = !globalRegistered && _quickPasteKeyboardHook.Register(settings.QuickPasteHotKey, settings.EnableQuickPasteHotKey);
+        LogService.Info($"Quick paste hotkey register. HotKey={settings.QuickPasteHotKey}, Enabled={settings.EnableQuickPasteHotKey}, RegisterHotKey={globalRegistered}, KeyboardHook={hookRegistered}");
+
+        if (!settings.EnableQuickPasteHotKey) return true;
+        if (globalRegistered || hookRegistered) return true;
+
+        ShowToast("快速候选热键注册失败，请在选项中更换");
+        return false;
+    }
+
+    private void ShowQuickPaste()
+    {
+        try
+        {
+            LogService.Info("Show quick paste requested");
+            var context = TextInputContextService.TryGetExternalTextInputContext();
+            if (context == null)
+            {
+                LogService.Info("Show quick paste skipped: no external text input context");
+                ShowToast("请先聚焦外部文本输入框");
+                return;
+            }
+
+            LogService.Info($"Show quick paste context. TargetHwnd={context.TargetHwnd}, PopupPoint={context.PopupPoint.X:F0},{context.PopupPoint.Y:F0}");
+            var items = _db.GetAllItems();
+            if (items.Count == 0)
+            {
+                LogService.Info("Show quick paste skipped: no items");
+                ShowToast("暂无可插入片段");
+                return;
+            }
+
+            var popup = new QuickPasteWindow(items, context.PopupPoint, (item, owner) => CommitQuickPaste(item, context.TargetHwnd, owner));
+            popup.Show();
+            popup.Activate();
+            LogService.Info($"Show quick paste opened. ItemCount={items.Count}");
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Show quick paste failed", ex);
+            ShowToast("快速候选弹窗打开失败，请查看日志");
+        }
+    }
+
+    private void CommitQuickPaste(ClipboardItem item, nint targetHwnd, Window owner)
+    {
+        var content = ResolveContent(item, owner);
+        if (content == null) return;
+
+        PasteService.PasteToForeWindow(targetHwnd, content);
+        _db.IncrementUsageCount(item.Id);
+        ApplyFilter();
+        ShowToast("已插入片段");
     }
 
     private void ToggleVisibility()
@@ -435,19 +524,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplyFilter();
     }
 
-    private string? ResolveContent(ClipboardItem item)
+    private string? ResolveContent(ClipboardItem item) => ResolveContent(item, this, useInlineVariable: true);
+
+    private string? ResolveContent(ClipboardItem item, Window owner) => ResolveContent(item, owner, useInlineVariable: false);
+
+    private string? ResolveContent(ClipboardItem item, Window owner, bool useInlineVariable)
     {
         var vars = TextProcessor.ExtractVariables(item.Content);
         if (vars.Count == 0) return item.Content;
 
-        if (vars.Count == 1 && !string.IsNullOrWhiteSpace(VarBox.Text))
+        if (useInlineVariable && vars.Count == 1 && !string.IsNullOrWhiteSpace(VarBox.Text))
         {
             var d = new Dictionary<string, string> { { vars[0], VarBox.Text.Trim() } };
             return TextProcessor.ReplaceVariables(item.Content, d);
         }
 
         // Multiple variables or empty box → show dialog
-        var dialog = new VariableDialog(vars) { Owner = this };
+        var dialog = new VariableDialog(vars) { Owner = owner };
         return dialog.ShowDialog() == true && dialog.Values != null
             ? TextProcessor.ReplaceVariables(item.Content, dialog.Values)
             : null;
@@ -1141,6 +1234,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         new JsonFormatDialog { Owner = this }.ShowDialog();
     }
 
+    private void ViewLogs_Click(object sender, RoutedEventArgs e)
+    {
+        new LogViewerDialog { Owner = this }.ShowDialog();
+    }
+
     private void Options_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OptionsDialog(_settings, _db.DatabasePath) { Owner = this };
@@ -1152,9 +1250,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ApplySettings(AppSettings nextSettings)
     {
         var oldSettings = _settings.Clone();
-        if (!_hotkey.Register(nextSettings.HotKey, nextSettings.EnableGlobalHotKey))
+        if (!_hotkey.Register(nextSettings.HotKey, nextSettings.EnableGlobalHotKey) ||
+            !RegisterQuickPasteHotKey(nextSettings))
         {
             _hotkey.Register(oldSettings.HotKey, oldSettings.EnableGlobalHotKey);
+            RegisterQuickPasteHotKey(oldSettings);
             MessageBox.Show("热键注册失败，可能已被其他程序占用。已保留原热键设置。", "选项", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -1246,6 +1346,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     protected override void OnClosed(EventArgs e)
     {
         _hotkey.Dispose();
+        _quickPasteGlobalHotKey.Dispose();
+        _quickPasteKeyboardHook.Dispose();
         _watcher.Dispose();
         _db.Dispose();
         base.OnClosed(e);

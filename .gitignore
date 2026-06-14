@@ -52,6 +52,7 @@ coverage.xml
 # 日志文件
 *.log
 local_settings.py
+docs/log/build-success-count.txt
 
 # IDE相关文件
 .idea/
@@ -104,3 +105,6 @@ packages/
 *.VC.db
 # Codegraph 本地索引
 .codegraph/
+
+# 本地经验文档
+docs/经验/

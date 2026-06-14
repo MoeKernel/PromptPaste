@@ -1,0 +1,112 @@
+<Window x:Class="PromptPaste.Views.QuickPasteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="快速候选" Width="420" Height="360"
+        WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13"
+        Deactivated="Window_Deactivated"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#241F1A" />
+        <SolidColorBrush x:Key="Muted" Color="#6F665D" />
+        <SolidColorBrush x:Key="Line" Color="#E3DDD2" />
+        <SolidColorBrush x:Key="Panel" Color="#FFFCF7" />
+        <SolidColorBrush x:Key="InputPanel" Color="#FFF8EF" />
+        <SolidColorBrush x:Key="Accent" Color="#B4532A" />
+        <SolidColorBrush x:Key="CandidateHover" Color="#F8EBDD" />
+        <SolidColorBrush x:Key="CandidateSelected" Color="#F1D6BF" />
+        <SolidColorBrush x:Key="CandidateSelectedBorder" Color="#B4532A" />
+
+        <Style x:Key="CandidateItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="{StaticResource InputPanel}" />
+            <Setter Property="BorderBrush" Value="#EFE7DC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemChrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="{StaticResource CandidateHover}" />
+                                <Setter TargetName="ItemChrome" Property="BorderBrush" Value="#DDBB9B" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="{StaticResource CandidateSelected}" />
+                                <Setter TargetName="ItemChrome" Property="BorderBrush" Value="{StaticResource CandidateSelectedBorder}" />
+                                <Setter TargetName="ItemChrome" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="WindowChrome"
+            Background="{StaticResource Panel}"
+            CornerRadius="16"
+            BorderBrush="{StaticResource Line}"
+            BorderThickness="1"
+            Padding="10"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBox x:Name="SearchBox"
+                     MinHeight="34"
+                     Padding="10,6"
+                     BorderBrush="{StaticResource Line}"
+                     BorderThickness="1"
+                     Background="{StaticResource InputPanel}"
+                     Foreground="{StaticResource Ink}"
+                     TextChanged="SearchBox_TextChanged" />
+            <ListBox Grid.Row="1"
+                     x:Name="CandidateList"
+                     Margin="0,8,0,0"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     ItemContainerStyle="{StaticResource CandidateItemStyle}"
+                     MouseDoubleClick="CandidateList_MouseDoubleClick">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Preview}" Margin="0,3,0,0" Foreground="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            <ItemsControl ItemsSource="{Binding Tags}" Margin="0,6,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#F1E2D2" CornerRadius="8" Padding="6,2" Margin="0,0,5,4">
+                                            <TextBlock Text="{Binding}" Foreground="#8F3F1E" FontSize="11" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Border>
+</Window>

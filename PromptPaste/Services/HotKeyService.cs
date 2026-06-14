@@ -15,6 +15,8 @@ public class HotKeyService : IDisposable
     private const int MOD_WIN = 0x0008;
     private const int MOD_NOREPEAT = 0x4000;
 
+    private static int _nextId = 0x1000;
+
     private readonly int _id;
     private readonly Action _callback;
     private readonly Window _window;
@@ -25,7 +27,7 @@ public class HotKeyService : IDisposable
     {
         _window = window;
         _callback = callback;
-        _id = GetHashCode();
+        _id = Interlocked.Increment(ref _nextId);
     }
 
     public bool Register(string hotKey = "Ctrl+Shift+M", bool enabled = true)
@@ -43,7 +45,9 @@ public class HotKeyService : IDisposable
         _registered = RegisterHotKey(_source.Handle, _id, modifiers | MOD_NOREPEAT, virtualKey);
         if (!_registered)
         {
-            Debug.WriteLine("[HotKey] RegisterHotKey failed");
+            var error = Marshal.GetLastWin32Error();
+            Debug.WriteLine($"[HotKey] RegisterHotKey failed: {error}");
+            LogService.Info($"RegisterHotKey failed. Id={_id}, HotKey={hotKey}, LastError={error}");
             _source.RemoveHook(WndProc);
             _source = null;
         }
@@ -109,6 +113,7 @@ public class HotKeyService : IDisposable
     {
         if (msg == WM_HOTKEY && (int)wParam == _id)
         {
+            LogService.Info($"RegisterHotKey triggered. Id={_id}");
             _callback();
             handled = true;
         }
@@ -117,9 +122,9 @@ public class HotKeyService : IDisposable
 
     public void Dispose() => Unregister();
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(nint hwnd, int id, int modifiers, int vk);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(nint hwnd, int id);
 }

@@ -11,6 +11,7 @@ namespace PromptPaste.Views.Dialogs;
 public partial class OptionsDialog : Window
 {
     private string _hotKey;
+    private string _quickPasteHotKey;
     private readonly string _databasePath;
     private readonly AppSettingsService _settingsService = new();
 
@@ -22,9 +23,12 @@ public partial class OptionsDialog : Window
         Result = settings.Clone();
         _databasePath = databasePath;
         _hotKey = string.IsNullOrWhiteSpace(Result.HotKey) ? "Ctrl+Shift+M" : Result.HotKey;
+        _quickPasteHotKey = string.IsNullOrWhiteSpace(Result.QuickPasteHotKey) ? "Ctrl+Alt+Space" : Result.QuickPasteHotKey;
 
         EnableHotKeyBox.IsChecked = Result.EnableGlobalHotKey;
         HotKeyBox.Text = _hotKey;
+        EnableQuickPasteHotKeyBox.IsChecked = Result.EnableQuickPasteHotKey;
+        QuickPasteHotKeyBox.Text = _quickPasteHotKey;
         EnableClipboardBox.IsChecked = Result.EnableClipboardWatcher;
         StartMinimizedBox.IsChecked = Result.StartMinimizedToTray;
         CloseToTrayBox.IsChecked = Result.CloseToTray;
@@ -34,8 +38,9 @@ public partial class OptionsDialog : Window
 
     private void HotKeyBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        HotKeyBox.Text = "请按组合键...";
-        HotKeyBox.SelectAll();
+        if (sender is not System.Windows.Controls.TextBox box) return;
+        box.Text = "请按组合键...";
+        box.SelectAll();
     }
 
     private void HotKeyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -47,33 +52,58 @@ public partial class OptionsDialog : Window
             return;
 
         var modifiers = Keyboard.Modifiers;
+        if (sender is not System.Windows.Controls.TextBox box) return;
+        var current = box == QuickPasteHotKeyBox ? _quickPasteHotKey : _hotKey;
         if (modifiers == ModifierKeys.None || key == Key.None)
         {
-            HotKeyBox.Text = _hotKey;
+            box.Text = current;
             return;
         }
 
         var text = FormatHotKey(modifiers, key);
         if (!HotKeyService.TryParseHotKey(text, out _, out _))
         {
-            HotKeyBox.Text = _hotKey;
+            box.Text = current;
             return;
         }
 
-        _hotKey = text;
-        HotKeyBox.Text = _hotKey;
+        if (box == QuickPasteHotKeyBox)
+        {
+            _quickPasteHotKey = text;
+            QuickPasteHotKeyBox.Text = _quickPasteHotKey;
+        }
+        else
+        {
+            _hotKey = text;
+            HotKeyBox.Text = _hotKey;
+        }
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         if (EnableHotKeyBox.IsChecked == true && !HotKeyService.TryParseHotKey(_hotKey, out _, out _))
         {
-            MessageBox.Show("热键无效，请按包含 Ctrl / Alt / Shift / Win 的组合键。", "热键设置", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("唤出热键无效，请按包含 Ctrl / Alt / Shift / Win 的组合键。", "热键设置", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (EnableQuickPasteHotKeyBox.IsChecked == true && !HotKeyService.TryParseHotKey(_quickPasteHotKey, out _, out _))
+        {
+            MessageBox.Show("快速候选热键无效，请按包含 Ctrl / Alt / Shift / Win 的组合键。", "热键设置", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (EnableHotKeyBox.IsChecked == true && EnableQuickPasteHotKeyBox.IsChecked == true &&
+            string.Equals(_hotKey, _quickPasteHotKey, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("唤出热键和快速候选热键不能相同。", "热键设置", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         Result.EnableGlobalHotKey = EnableHotKeyBox.IsChecked == true;
         Result.HotKey = _hotKey;
+        Result.EnableQuickPasteHotKey = EnableQuickPasteHotKeyBox.IsChecked == true;
+        Result.QuickPasteHotKey = _quickPasteHotKey;
         Result.EnableClipboardWatcher = EnableClipboardBox.IsChecked == true;
         Result.StartMinimizedToTray = StartMinimizedBox.IsChecked == true;
         Result.CloseToTray = CloseToTrayBox.IsChecked == true;
