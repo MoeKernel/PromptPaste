@@ -54,7 +54,28 @@ public class JsonImportExportTests
         var item = Assert.Single(fixture.Db.GetAllItems());
         Assert.Contains("A/B", item.CategoryPaths);
         Assert.Contains("常用", item.CategoryPaths);
+        Assert.Empty(item.Tags);
         Assert.Contains(fixture.Db.GetAllCategoriesFlat(), c => c.Path == "A/B");
+    }
+
+    [Fact]
+    public void ImportData_PopulatesTagsForCardBinding()
+    {
+        using var fixture = new TestDatabase();
+
+        fixture.Db.ImportData(new List<ExportClipboardItem>
+        {
+            new()
+            {
+                Title = "带标签片段",
+                Content = "内容",
+                CategoryPaths = new List<string> { "提示词" },
+                Tags = new List<string> { "prompt", "常用" }
+            }
+        });
+
+        var item = Assert.Single(fixture.Db.GetAllItems());
+        Assert.Equal(new[] { "prompt", "常用" }.OrderBy(x => x), item.Tags.OrderBy(x => x));
     }
 
     [Fact]

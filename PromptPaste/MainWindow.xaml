@@ -389,7 +389,12 @@
                                ClipToBounds="True"
                                Margin="0,0,0,10" />
 
-                    <ItemsControl Grid.Row="2" ItemsSource="{Binding Tags}" MaxHeight="34" ClipToBounds="True" Margin="0,0,0,10">
+                    <ItemsControl Grid.Row="2"
+                                  ItemsSource="{Binding Tags}"
+                                  MaxHeight="34"
+                                  ClipToBounds="True"
+                                  Margin="0,0,0,10"
+                                  Visibility="{Binding Tags.Count, Converter={StaticResource CountVis}}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel />
@@ -397,8 +402,17 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="#F1E2D2" CornerRadius="9" Padding="7,2" Margin="0,0,5,5">
-                                    <TextBlock Text="{Binding}" FontSize="10.5" Foreground="{StaticResource AccentDark}" />
+                                <Border Background="#F3E2D1"
+                                        BorderBrush="#E2C5AD"
+                                        BorderThickness="1"
+                                        CornerRadius="9"
+                                        Padding="7,2"
+                                        Margin="0,0,5,5">
+                                    <TextBlock Text="{Binding}"
+                                               FontSize="10.5"
+                                               Foreground="{StaticResource AccentDark}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="78" />
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

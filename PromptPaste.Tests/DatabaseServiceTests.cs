@@ -37,8 +37,14 @@ public class DatabaseServiceTests
         var updated = fixture.Db.GetItem(id)!.Clone();
         updated.Title = "中文扩写";
         updated.Content = "请扩写以下内容";
+        updated.Tags = new List<string> { "扩写", "AI" };
         Assert.True(fixture.Db.UpdateItem(updated));
-        Assert.Equal("中文扩写", fixture.Db.GetItem(id)!.Title);
+
+        var updatedItem = fixture.Db.GetItem(id)!;
+        Assert.Equal("中文扩写", updatedItem.Title);
+        Assert.Contains("扩写", updatedItem.Tags);
+        Assert.Contains("AI", updatedItem.Tags);
+        Assert.DoesNotContain("写作", updatedItem.Tags);
     }
 
     [Fact]
