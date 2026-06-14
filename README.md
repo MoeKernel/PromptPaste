@@ -93,6 +93,7 @@ PromptPaste 是一款面向 AI 提示词、常用话术和文本模板的 Window
 
 - Windows 10/11
 - .NET SDK 8.x
+- 构建安装包需要 NSIS（`makensis.exe`）
 
 构建：
 
@@ -106,11 +107,16 @@ dotnet build PromptPaste.sln -c Release
 dotnet test PromptPaste.sln -c Release
 ```
 
-发布构建：
+发布构建并生成正式安装包：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
+
+构建完成后会生成：
+
+- `bin/`：免安装发布目录
+- `dist/PromptPaste-Setup.exe`：正式安装程序，默认安装到 `C:\Program Files\PromptPaste`，安装时可自定义路径
 
 ## 导入导出格式
 

@@ -9,6 +9,8 @@ $Root = $PSScriptRoot
 $Project = Join-Path $Root 'PromptPaste/PromptPaste.csproj'
 $ProjectDir = Split-Path $Project -Parent
 $FinalOutput = Join-Path $Root 'bin'
+$DistOutput = Join-Path $Root 'dist'
+$InstallerScript = Join-Path $Root 'installer/PromptPaste.nsi'
 $WorkDir = Join-Path $Root '.build'
 $TempPublish = Join-Path $WorkDir 'publish'
 $TempObj = Join-Path $ProjectDir 'obj'
@@ -17,6 +19,103 @@ $BackupOutput = Join-Path $Root 'bin.__backup__'
 $DeployOutput = 'D:\Protable\PromptPaste'
 $BuildLogDir = Join-Path $Root 'docs/log'
 $BuildSuccessCounterFile = Join-Path $BuildLogDir 'build-success-count.txt'
+
+function Get-NsisCompiler {
+    $command = Get-Command 'makensis.exe' -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidates = @(
+        'C:\Program Files (x86)\NSIS\makensis.exe',
+        'C:\Program Files\NSIS\makensis.exe'
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-ProjectVersion {
+    param([string]$ProjectPath)
+
+    [xml]$projectXml = Get-Content $ProjectPath
+    $version = $projectXml.Project.PropertyGroup.Version | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        return '2.0.0'
+    }
+
+    return $version
+}
+
+function New-NsisInstaller {
+    param(
+        [string]$SourceDir,
+        [string]$OutputDir,
+        [string]$ScriptPath,
+        [string]$Version
+    )
+
+    $makensis = Get-NsisCompiler
+    if ($makensis -eq $null) {
+        throw "NSIS compiler not found. Install NSIS from https://nsis.sourceforge.io/Download, or add makensis.exe to PATH."
+    }
+
+    if (-not (Test-Path $ScriptPath)) {
+        throw "NSIS script not found: $ScriptPath"
+    }
+
+    if (-not (Test-Path $OutputDir)) {
+        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    }
+
+    $outputFile = Join-Path $OutputDir 'PromptPaste-Setup.exe'
+    if (Test-Path $outputFile) {
+        Remove-Item $outputFile -Force
+    }
+
+    $args = @(
+        '/V4',
+        '/INPUTCHARSET',
+        'UTF8',
+        "/DAPP_VERSION=$Version",
+        "/DPUBLISH_DIR=$SourceDir",
+        "/DDIST_DIR=$OutputDir",
+        $ScriptPath
+    )
+
+    Push-Location (Split-Path $ScriptPath -Parent)
+    try {
+        $nsisOutput = & $makensis @args 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($nsisOutput) {
+        $nsisOutput | ForEach-Object { Write-Host $_ }
+    }
+
+    if ($exitCode -ne 0) {
+        $outputText = ($nsisOutput | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($outputText)) {
+            throw "NSIS compiler failed with exit code $exitCode"
+        }
+
+        throw "NSIS compiler failed with exit code $exitCode`n$outputText"
+    }
+
+    if (-not (Test-Path $outputFile)) {
+        throw "Installer was not created: $outputFile"
+    }
+
+    return $outputFile
+}
 
 function Update-BuildSuccessCounter {
     param(
@@ -134,7 +233,8 @@ try {
         (Join-Path $FinalOutput '.codegraph'),
         (Join-Path $FinalOutput 'src'),
         (Join-Path $FinalOutput 'main.py'),
-        (Join-Path $FinalOutput 'requirements.txt')
+        (Join-Path $FinalOutput 'requirements.txt'),
+        (Join-Path $FinalOutput 'resources\styles')
     )
     foreach ($path in $forbidden) {
         if (Test-Path $path) {
@@ -147,9 +247,13 @@ try {
         throw "Debug/documentation symbols found in publish output: $($symbols[0].FullName)"
     }
 
+    $projectVersion = Get-ProjectVersion -ProjectPath $Project
+    $createdInstaller = New-NsisInstaller -SourceDir $FinalOutput -OutputDir $DistOutput -ScriptPath $InstallerScript -Version $projectVersion
+
     $buildSuccessCount = Update-BuildSuccessCounter -Path $BuildSuccessCounterFile -Configuration $Configuration -OutputPath $FinalOutput
 
     Write-Host "Build succeeded: $FinalOutput"
+    Write-Host "Installer created: $createdInstaller"
     Write-Host "Build success count: $buildSuccessCount"
     if ($deployed) {
         Write-Host "Deployed to: $DeployOutput"
@@ -157,7 +261,12 @@ try {
 }
 finally {
     if (Test-Path $WorkDir) {
-        Remove-Item $WorkDir -Recurse -Force
+        try {
+            Remove-Item $WorkDir -Recurse -Force
+        }
+        catch {
+            Write-Warning "Could not remove temporary build directory: $WorkDir. $($_.Exception.Message)"
+        }
     }
     if (Test-Path $ProjectObj) {
         Remove-Item $ProjectObj -Recurse -Force
