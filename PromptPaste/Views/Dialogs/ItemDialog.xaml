@@ -1,8 +1,8 @@
 <Window x:Class="PromptPaste.Views.Dialogs.ItemDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="添加内容" Width="620" Height="650"
-        MinWidth="560" MinHeight="520"
+        Title="添加内容" Width="720" Height="620"
+        MinWidth="700" MinHeight="540"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         Background="#F4F1EA"
@@ -33,6 +33,11 @@
             </Setter>
         </Style>
 
+        <Style x:Key="CompactFieldTextBox" TargetType="TextBox" BasedOn="{StaticResource FieldTextBox}">
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource Accent}" />
@@ -50,15 +55,16 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="18" Padding="20" Background="{StaticResource Panel}" CornerRadius="20" BorderBrush="{StaticResource Line}" BorderThickness="1">
+    <Border Margin="16" Padding="18" Background="{StaticResource Panel}" CornerRadius="20" BorderBrush="{StaticResource Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Margin="0,0,0,18">
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
                 <TextBlock x:Name="HeaderTitle" Text="新建片段" FontSize="22" FontWeight="Bold" Foreground="{StaticResource Ink}" />
                 <TextBlock x:Name="HeaderSubtitle" Text="保存常用提示词、话术或文本模板" Margin="0,4,0,0" Foreground="{StaticResource Muted}" />
             </StackPanel>
@@ -66,68 +72,84 @@
             <ScrollViewer Grid.Row="1"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
-                          Padding="0,0,8,0">
-                <StackPanel>
-                    <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="标题" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
-                        <TextBox x:Name="TitleBox" Style="{StaticResource FieldTextBox}" FontSize="15" FontWeight="SemiBold" TextChanged="OnFieldChanged" />
+                          Padding="0,0,6,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="320" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="250" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="标题" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,5" />
+                            <TextBox x:Name="TitleBox" Style="{StaticResource CompactFieldTextBox}" FontSize="15" FontWeight="SemiBold" TextChanged="OnFieldChanged" />
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Text="内容" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,5" />
+                            <TextBox x:Name="ContentBox"
+                                     Style="{StaticResource FieldTextBox}"
+                                     FontSize="13"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     MinHeight="370"
+                                     TextChanged="OnFieldChanged" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="内容" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
-                        <TextBox x:Name="ContentBox" Style="{StaticResource FieldTextBox}" FontSize="13" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="180" TextChanged="OnFieldChanged" />
-                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="分类（可多选）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,5" />
+                            <TextBox x:Name="CategorySearchBox"
+                                     Style="{StaticResource CompactFieldTextBox}"
+                                     Margin="0,0,0,8"
+                                     ToolTip="输入分类名称或路径进行筛选"
+                                     TextChanged="CategorySearchBox_TextChanged" />
+                            <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Padding="8" MaxHeight="250">
+                                <TreeView x:Name="CategoryTree"
+                                          BorderThickness="0"
+                                          Background="Transparent" />
+                            </Border>
+                            <ItemsControl x:Name="SelectedCategoriesPanel" Margin="0,8,0,0" MaxHeight="72" ClipToBounds="True">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#F1E2D2" CornerRadius="10" Padding="8,3" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Path}" Foreground="{StaticResource AccentDark}" FontSize="11.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                                                <Button Content="×"
+                                                        Tag="{Binding Id}"
+                                                        Margin="6,0,0,0"
+                                                        Padding="0"
+                                                        Width="14" Height="14"
+                                                        FontSize="12"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Foreground="{StaticResource Muted}"
+                                                        Cursor="Hand"
+                                                        Click="RemoveSelectedCategory_Click" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
-                    <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="分类（可多选，支持搜索）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
-                        <TextBox x:Name="CategorySearchBox"
-                                 Style="{StaticResource FieldTextBox}"
-                                 Margin="0,0,0,8"
-                                 ToolTip="输入分类名称或路径进行筛选"
-                                 TextChanged="CategorySearchBox_TextChanged" />
-                        <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Padding="8" MaxHeight="115">
-                            <TreeView x:Name="CategoryTree"
-                                      BorderThickness="0"
-                                      Background="Transparent" />
-                        </Border>
-                        <ItemsControl x:Name="SelectedCategoriesPanel" Margin="0,8,0,0" MaxHeight="42" ClipToBounds="True">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#F1E2D2" CornerRadius="10" Padding="8,3" Margin="0,0,6,6">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Path}" Foreground="{StaticResource AccentDark}" FontSize="11.5" VerticalAlignment="Center" />
-                                            <Button Content="×"
-                                                    Tag="{Binding Id}"
-                                                    Margin="6,0,0,0"
-                                                    Padding="0"
-                                                    Width="14" Height="14"
-                                                    FontSize="12"
-                                                    Background="Transparent"
-                                                    BorderThickness="0"
-                                                    Foreground="{StaticResource Muted}"
-                                                    Cursor="Hand"
-                                                    Click="RemoveSelectedCategory_Click" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <StackPanel>
+                            <TextBlock Text="标签（用逗号分隔）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,5" />
+                            <TextBox x:Name="TagsBox" Style="{StaticResource CompactFieldTextBox}" />
+                        </StackPanel>
                     </StackPanel>
-
-                    <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="标签（用逗号分隔）" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Margin="2,0,0,6" />
-                        <TextBox x:Name="TagsBox" Style="{StaticResource FieldTextBox}" />
-                    </StackPanel>
-
-                </StackPanel>
+                </Grid>
             </ScrollViewer>
 
-            <TextBlock Grid.Row="2" FontSize="12" Foreground="{StaticResource AccentDark}" Margin="2,12,0,16" Text="提示：使用 {{变量名}} 格式添加可替换变量" />
+            <TextBlock Grid.Row="2" FontSize="12" Foreground="{StaticResource AccentDark}" Margin="2,10,0,14" Text="提示：使用 {{变量名}} 格式添加可替换变量" />
 
             <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="取消" Style="{StaticResource GhostButton}" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click" />

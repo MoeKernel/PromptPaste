@@ -44,6 +44,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private CategoryNode? _dragCategory;
     private ClipboardItem? _dragItem;
     private bool _suppressCategorySelectionChanged;
+    private Point? _categoryDragStartPoint;
 
     private int _itemCount;
     public int ItemCount
@@ -162,22 +163,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             StringComparison.OrdinalIgnoreCase);
     }
 
-    private void LoadData(HashSet<int>? expandedCategoryIds = null)
+    private void LoadData(HashSet<int>? expandedCategoryIds = null, int? selectedCategoryId = null)
     {
         expandedCategoryIds ??= CaptureExpandedCategoryIds();
+        var categoryIdToRestore = selectedCategoryId
+            ?? (!IsTrashView && !_isUncategorizedView ? _selectedCategory?.Id : null);
 
-        CategoryNodes.Clear();
-        foreach (var node in _db.GetCategoryTree())
-            CategoryNodes.Add(node);
+        _suppressCategorySelectionChanged = true;
+        try
+        {
+            CategoryNodes.Clear();
+            foreach (var node in _db.GetCategoryTree())
+                CategoryNodes.Add(node);
+        }
+        finally
+        {
+            _suppressCategorySelectionChanged = false;
+        }
 
         Tags.Clear();
         foreach (var tag in _db.GetTags())
             Tags.Add(tag);
 
+        RestoreSelectedCategoryModel(categoryIdToRestore);
         ReconcileSelectedTags();
         RefreshTagSuggestions();
         ApplyFilter();
         RestoreExpandedCategoryIds(expandedCategoryIds);
+        RestoreSelectedCategoryVisual(categoryIdToRestore);
     }
 
     private List<CategoryNode> FlattenCategories()
@@ -508,11 +521,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (dialog.ShowDialog() != true || dialog.Result == null)
             return false;
 
+        var wasTrashView = IsTrashView;
+        var wasUncategorizedView = _isUncategorizedView;
+        var selectedCategoryId = _selectedCategory?.Id;
+        var expandedCategoryIds = CaptureExpandedCategoryIds();
+
         if (item == null)
             _db.AddItem(dialog.Result);
         else
             _db.UpdateItem(dialog.Result);
-        LoadData();
+
+        IsTrashView = wasTrashView;
+        _isUncategorizedView = wasUncategorizedView;
+        LoadData(expandedCategoryIds, selectedCategoryId);
         ShowToast(item == null ? "已新建片段" : "已保存片段");
         return true;
     }
@@ -669,13 +690,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SelectedTags.Add(availableTags[name]);
     }
 
+    private void CategoryTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _categoryDragStartPoint = e.GetPosition(null);
+        _dragCategory = null;
+    }
+
     private void CategoryTree_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            _categoryDragStartPoint = null;
+            return;
+        }
+
+        if (_categoryDragStartPoint is not Point startPoint) return;
+        var currentPoint = e.GetPosition(null);
+        if (Math.Abs(currentPoint.X - startPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(currentPoint.Y - startPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
         var item = FindAncestor<TreeViewItem>(e.OriginalSource);
-        if (e.LeftButton == MouseButtonState.Pressed && item?.DataContext is CategoryNode node)
+        if (item?.DataContext is CategoryNode node)
         {
             _dragCategory = node;
             DragDrop.DoDragDrop(item, node, DragDropEffects.Move);
+            _dragCategory = null;
+            _categoryDragStartPoint = null;
+            e.Handled = true;
         }
     }
 
@@ -702,6 +744,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (e.Data.GetDataPresent(typeof(CategoryNode)) && e.Data.GetData(typeof(CategoryNode)) is CategoryNode source)
         {
+            if (source.Id == target.Id)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (_db.GetDescendantCategoryIds(source.Id).Contains(target.Id))
+            {
+                ShowToast("不能移动到自身或子分类下");
+                e.Handled = true;
+                return;
+            }
+
             var expanded = CaptureExpandedCategoryIds();
             expanded.Add(target.Id);
             try
@@ -844,6 +899,83 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         foreach (var child in treeItem.Items)
             RestoreExpandedCategoryIds(treeItem.ItemContainerGenerator.ContainerFromItem(child) as TreeViewItem, ids);
+    }
+
+    private void RestoreSelectedCategoryModel(int? categoryId)
+    {
+        if (IsTrashView || _isUncategorizedView)
+        {
+            _selectedCategory = null;
+            return;
+        }
+
+        _selectedCategory = categoryId is int id
+            ? FindCategoryById(CategoryNodes, id)
+            : null;
+    }
+
+    private static CategoryNode? FindCategoryById(IEnumerable<CategoryNode> nodes, int id)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == id) return node;
+
+            var child = FindCategoryById(node.Children, id);
+            if (child != null) return child;
+        }
+
+        return null;
+    }
+
+    private void RestoreSelectedCategoryVisual(int? categoryId)
+    {
+        if (categoryId == null || IsTrashView || _isUncategorizedView) return;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            var treeItem = FindCategoryTreeItem(categoryId.Value);
+            if (treeItem == null) return;
+
+            _suppressCategorySelectionChanged = true;
+            try
+            {
+                treeItem.IsSelected = true;
+                treeItem.BringIntoView();
+            }
+            finally
+            {
+                _suppressCategorySelectionChanged = false;
+            }
+        }, DispatcherPriority.Loaded);
+    }
+
+    private TreeViewItem? FindCategoryTreeItem(int categoryId)
+    {
+        CategoryTree.UpdateLayout();
+        foreach (var item in CategoryTree.Items)
+        {
+            var treeItem = FindCategoryTreeItem(CategoryTree.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem, categoryId);
+            if (treeItem != null) return treeItem;
+        }
+
+        return null;
+    }
+
+    private static TreeViewItem? FindCategoryTreeItem(TreeViewItem? treeItem, int categoryId)
+    {
+        if (treeItem == null) return null;
+
+        if (treeItem.DataContext is CategoryNode node && node.Id == categoryId)
+            return treeItem;
+
+        treeItem.UpdateLayout();
+        foreach (var child in treeItem.Items)
+        {
+            var childItem = FindCategoryTreeItem(treeItem.ItemContainerGenerator.ContainerFromItem(child) as TreeViewItem, categoryId);
+            if (childItem != null) return childItem;
+        }
+
+        return null;
     }
 
     private static void ClearTreeViewSelection(TreeView tree)

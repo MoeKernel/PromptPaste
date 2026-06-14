@@ -600,6 +600,7 @@
                               ItemsSource="{Binding CategoryNodes}"
                               Background="Transparent" BorderThickness="0"
                               ItemContainerStyle="{StaticResource CategoryTreeItemStyle}"
+                              PreviewMouseLeftButtonDown="CategoryTree_PreviewMouseLeftButtonDown"
                               PreviewMouseMove="CategoryTree_PreviewMouseMove"
                               PreviewMouseRightButtonDown="CategoryTree_PreviewMouseRightButtonDown"
                               Drop="CategoryTree_Drop"
