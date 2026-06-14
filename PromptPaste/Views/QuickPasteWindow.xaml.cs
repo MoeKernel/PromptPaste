@@ -39,15 +39,19 @@ public partial class QuickPasteWindow : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshCandidates();
 
-    private void SetSafeLocation(Point location)
+    private void SetSafeLocation(Point anchor)
     {
-        var minLeft = SystemParameters.VirtualScreenLeft;
-        var minTop = SystemParameters.VirtualScreenTop;
-        var maxLeft = minLeft + SystemParameters.VirtualScreenWidth - Width;
-        var maxTop = minTop + SystemParameters.VirtualScreenHeight - Height;
+        var location = QuickPasteWindowPlacement.CalculatePopupLocation(
+            anchor,
+            new Size(Width, Height),
+            new Rect(
+                SystemParameters.VirtualScreenLeft,
+                SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth,
+                SystemParameters.VirtualScreenHeight));
 
-        Left = Math.Clamp(location.X, minLeft, Math.Max(minLeft, maxLeft));
-        Top = Math.Clamp(location.Y, minTop, Math.Max(minTop, maxTop));
+        Left = location.X;
+        Top = location.Y;
     }
 
     private void UpdateRoundedClip()
@@ -137,4 +141,31 @@ public sealed class QuickPasteCandidate
     public IReadOnlyList<string> Tags => Item.Tags;
 
     public QuickPasteCandidate(ClipboardItem item) => Item = item;
+}
+
+
+public static class QuickPasteWindowPlacement
+{
+    private const double HorizontalOffset = 2;
+    private const double VerticalOffset = 2;
+
+    public static Point CalculatePopupLocation(Point anchor, Size popupSize, Rect screenBounds)
+    {
+        var left = anchor.X + HorizontalOffset;
+        var top = anchor.Y + VerticalOffset;
+
+        if (left + popupSize.Width > screenBounds.Right)
+            left = screenBounds.Right - popupSize.Width;
+
+        if (top + popupSize.Height > screenBounds.Bottom)
+            top = anchor.Y - popupSize.Height - VerticalOffset;
+
+        var maxLeft = Math.Max(screenBounds.Left, screenBounds.Right - popupSize.Width);
+        var maxTop = Math.Max(screenBounds.Top, screenBounds.Bottom - popupSize.Height);
+
+        left = Math.Clamp(left, screenBounds.Left, maxLeft);
+        top = Math.Clamp(top, screenBounds.Top, maxTop);
+
+        return new Point(left, top);
+    }
 }

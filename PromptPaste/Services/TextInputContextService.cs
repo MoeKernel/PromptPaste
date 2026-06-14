@@ -4,10 +4,19 @@ using System.Windows.Automation;
 
 namespace PromptPaste.Services;
 
-public sealed record TextInputContext(nint TargetHwnd, Point PopupPoint);
+public enum TextInputContextSource
+{
+    Win32Caret,
+    UIASelection,
+    UIAFocus,
+    MouseFallback
+}
+
+public sealed record TextInputContext(nint TargetHwnd, Point PopupPoint, TextInputContextSource Source, double DpiScale);
 
 public static class TextInputContextService
 {
+    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
     public static TextInputContext? TryGetExternalTextInputContext()
     {
         try
@@ -16,20 +25,25 @@ public static class TextInputContextService
             if (foreground == nint.Zero)
                 return null;
 
-            var popupPoint = TryGetWin32CaretPoint(foreground)
-                          ?? TryGetAutomationSelectionPoint()
-                          ?? TryGetAutomationFocusPoint()
-                          ?? GetMouseScreenPoint();
-            return new TextInputContext(foreground, popupPoint);
+            var locatedPoint = TryGetWin32CaretPoint(foreground)
+                            ?? TryGetAutomationSelectionPoint()
+                            ?? TryGetAutomationFocusPoint()
+                            ?? GetMouseScreenPoint();
+            var dpiScale = GetDpiScale(foreground);
+            var monitorBounds = GetMonitorBounds(locatedPoint.Point);
+            return new TextInputContext(foreground, ToDeviceIndependentPoint(locatedPoint.Point, dpiScale, monitorBounds), locatedPoint.Source, dpiScale);
         }
         catch
         {
             var foreground = GetForegroundWindow();
-            return foreground == nint.Zero ? null : new TextInputContext(foreground, GetMouseScreenPoint());
+            var fallback = GetMouseScreenPoint();
+            var dpiScale = foreground == nint.Zero ? 1.0 : GetDpiScale(foreground);
+            var monitorBounds = GetMonitorBounds(fallback.Point);
+            return foreground == nint.Zero ? null : new TextInputContext(foreground, ToDeviceIndependentPoint(fallback.Point, dpiScale, monitorBounds), fallback.Source, dpiScale);
         }
     }
 
-    private static Point? TryGetWin32CaretPoint(nint foreground)
+    private static LocatedPoint? TryGetWin32CaretPoint(nint foreground)
     {
         try
         {
@@ -51,7 +65,7 @@ public static class TextInputContextService
 
             if (!ClientToScreen(caretHwnd, ref point)) return null;
             if (point.X <= 0 && point.Y <= 0) return null;
-            return new Point(point.X + 2, point.Y + 6);
+            return new LocatedPoint(new Point(point.X + 2, point.Y + 6), TextInputContextSource.Win32Caret);
         }
         catch
         {
@@ -59,7 +73,7 @@ public static class TextInputContextService
         }
     }
 
-    private static Point? TryGetAutomationSelectionPoint()
+    private static LocatedPoint? TryGetAutomationSelectionPoint()
     {
         try
         {
@@ -71,7 +85,7 @@ public static class TextInputContextService
                 foreach (var range in textPattern.GetSelection())
                 {
                     var point = GetFirstUsablePoint(range.GetBoundingRectangles());
-                    if (point != null) return point;
+                    if (point != null) return new LocatedPoint(point.Value, TextInputContextSource.UIASelection);
                 }
             }
         }
@@ -83,13 +97,18 @@ public static class TextInputContextService
         return null;
     }
 
-    private static Point? TryGetAutomationFocusPoint()
+    private static LocatedPoint? TryGetAutomationFocusPoint()
     {
         try
         {
             var rect = AutomationElement.FocusedElement?.Current.BoundingRectangle;
             if (rect is { IsEmpty: false } && rect.Value.Left > -30000 && rect.Value.Top > -30000)
-                return new Point(rect.Value.Left + 12, rect.Value.Bottom + 6);
+            {
+                if (GetCursorPos(out var cursor) && IsInside(rect.Value, cursor))
+                    return new LocatedPoint(new Point(cursor.X + 2, cursor.Y + 2), TextInputContextSource.MouseFallback);
+
+                return new LocatedPoint(new Point(rect.Value.Left + 6, rect.Value.Bottom + 2), TextInputContextSource.UIAFocus);
+            }
         }
         catch
         {
@@ -116,8 +135,57 @@ public static class TextInputContextService
         return null;
     }
 
-    private static Point GetMouseScreenPoint()
-        => GetCursorPos(out var point) ? new Point(point.X + 8, point.Y + 8) : new Point(200, 200);
+    private static LocatedPoint GetMouseScreenPoint()
+        => new(GetCursorPos(out var point) ? new Point(point.X + 8, point.Y + 8) : new Point(200, 200), TextInputContextSource.MouseFallback);
+
+    public static Point ToDeviceIndependentPoint(Point screenPixelPoint, double dpiScale)
+        => ToDeviceIndependentPoint(screenPixelPoint, dpiScale, new Rect(0, 0, 0, 0));
+
+    public static Point ToDeviceIndependentPoint(Point screenPixelPoint, double dpiScale, Rect monitorPixelBounds)
+    {
+        if (dpiScale <= 0) return screenPixelPoint;
+
+        return new Point(
+            monitorPixelBounds.Left + (screenPixelPoint.X - monitorPixelBounds.Left) / dpiScale,
+            monitorPixelBounds.Top + (screenPixelPoint.Y - monitorPixelBounds.Top) / dpiScale);
+    }
+
+    private static Rect GetMonitorBounds(Point screenPixelPoint)
+    {
+        try
+        {
+            var monitor = MonitorFromPoint(
+                new POINT { X = (int)Math.Round(screenPixelPoint.X), Y = (int)Math.Round(screenPixelPoint.Y) },
+                MONITOR_DEFAULTTONEAREST);
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (monitor != nint.Zero && GetMonitorInfo(monitor, ref info))
+                return new Rect(info.rcMonitor.Left, info.rcMonitor.Top, info.rcMonitor.Right - info.rcMonitor.Left, info.rcMonitor.Bottom - info.rcMonitor.Top);
+        }
+        catch
+        {
+            // Fall back to virtual origin when monitor lookup is unavailable.
+        }
+
+        return new Rect(0, 0, 0, 0);
+    }
+
+    private static double GetDpiScale(nint hwnd)
+    {
+        try
+        {
+            var dpi = GetDpiForWindow(hwnd);
+            return dpi == 0 ? 1.0 : dpi / 96.0;
+        }
+        catch
+        {
+            return 1.0;
+        }
+    }
+
+    private sealed record LocatedPoint(Point Point, TextInputContextSource Source);
+
+    private static bool IsInside(Rect rect, POINT point)
+        => point.X >= rect.Left && point.X <= rect.Right && point.Y >= rect.Top && point.Y <= rect.Bottom;
 
     private static bool IsOwnProcessWindow(nint hwnd)
     {
@@ -139,6 +207,15 @@ public static class TextInputContextService
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(nint hMonitor, ref MONITORINFO lpmi);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GUITHREADINFO
@@ -168,5 +245,14 @@ public static class TextInputContextService
     {
         public int X;
         public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
     }
 }

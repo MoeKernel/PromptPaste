@@ -339,7 +339,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            LogService.Info($"Show quick paste context. TargetHwnd={context.TargetHwnd}, PopupPoint={context.PopupPoint.X:F0},{context.PopupPoint.Y:F0}");
+            LogService.Info($"Show quick paste context. TargetHwnd={context.TargetHwnd}, PopupPoint={context.PopupPoint.X:F0},{context.PopupPoint.Y:F0}, Source={context.Source}, DpiScale={context.DpiScale:F2}");
             var items = _db.GetAllItems();
             if (items.Count == 0)
             {
