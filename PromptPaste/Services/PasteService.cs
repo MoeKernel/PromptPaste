@@ -16,7 +16,7 @@ public static class PasteService
         }
         catch { }
 
-        ClipboardWatcher.IsInternalCopy = true;
+        ClipboardWatcher.MarkInternalCopy(text);
         try { Clipboard.SetText(text); } catch { return; }
 
         // Switch to target and inject Ctrl+V
@@ -34,7 +34,7 @@ public static class PasteService
         {
             if (previousText != null)
             {
-                ClipboardWatcher.IsInternalCopy = true;
+                ClipboardWatcher.MarkInternalCopy(previousText);
                 Clipboard.SetText(previousText);
             }
         }

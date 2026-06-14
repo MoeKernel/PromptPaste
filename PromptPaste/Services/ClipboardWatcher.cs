@@ -83,6 +83,15 @@ public class ClipboardWatcher : IDisposable
         return nint.Zero;
     }
 
+    internal static void ResetInternalCopyStateForTests()
+    {
+        IsInternalCopy = false;
+        _lastInternalCopyText = null;
+        _lastInternalCopyExpiresUtc = default;
+    }
+
+    internal static bool ShouldIgnoreInternalCopyForTests(string text) => ShouldIgnoreInternalCopy(text);
+
     private static bool ShouldIgnoreInternalCopy(string text)
     {
         var now = DateTime.UtcNow;
@@ -92,12 +101,16 @@ public class ClipboardWatcher : IDisposable
             _lastInternalCopyText = null;
         }
 
-        if (_lastInternalCopyText != null &&
-            now <= _lastInternalCopyExpiresUtc &&
-            string.Equals(text, _lastInternalCopyText, StringComparison.Ordinal))
+        if (_lastInternalCopyText != null && now <= _lastInternalCopyExpiresUtc)
         {
-            IsInternalCopy = false;
-            return true;
+            if (string.Equals(text, _lastInternalCopyText, StringComparison.Ordinal))
+            {
+                IsInternalCopy = false;
+                return true;
+            }
+
+            if (IsInternalCopy)
+                return false;
         }
 
         if (IsInternalCopy)

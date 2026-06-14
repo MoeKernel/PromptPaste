@@ -108,3 +108,6 @@ packages/
 
 # 本地经验文档
 docs/经验/
+
+# VSCode Counter 插件输出
+.VSCodeCounter/
